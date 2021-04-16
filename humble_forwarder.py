@@ -15,6 +15,9 @@ Setup instructions:
 * Make sure your Lambda has a large enough size and timeout, especially if
   you want to test the error emails due to too large of body.
 
+* Consider granting the Lambda `SNS:Publish` permission, and enable its Dead Letter Queue
+  so you get notified if any Lambda fails after 3 async attempts.
+
 * Read the configuration options below, then change them in the code or use environment variables
 
 Features:
