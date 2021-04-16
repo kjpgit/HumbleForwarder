@@ -24,7 +24,7 @@ Features:
 
 * Don't forward emails marked as spam / virus.  Note you need to have scanning enabled.
 
-* Don't forward using an attachment
+* The body/content is not modified, all attachments are kept
 
 * Send an error email if there was a problem sending (like body too large).
   You can test this by setting the env var TEST_LARGE_BODY, to generate a 20MB body.
