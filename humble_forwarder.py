@@ -24,7 +24,7 @@ Features:
 * Don't forward using an attachment
 
 * Send an error email if there was a problem sending (like body too large).
-  You can test this by putting "test_too_large_body_12345" in the subject, to simulate a 20MB body.
+  You can test this by setting the env var TEST_LARGE_BODY, to generate a 20MB body.
   A 768MB Lambda takes 15 seconds for this test.
 
 * JSON logging.  You can run this cloudwatch logs insights query to check on your emails:
@@ -165,7 +165,7 @@ def create_new_email(config, original_raw_bytes):
         new_message["Reply-To"] = original_message["From"]
 
     # For fault injection (Testing error emails)
-    if "test_too_large_body_12345" in original_message.get("Subject", ""):
+    if os.getenv("TEST_LARGE_BODY"):
         logger.info("setting a huge body")
         new_message.clear_content()
         new_message.set_content("x" * 20000000)
@@ -184,6 +184,7 @@ def create_error_email(attempted_message, traceback_string):
 There was an error forwarding an email to SES.
 
 Original Sender: {attempted_message["Reply-To"]}
+Original Subject: {attempted_message["Subject"]}
 
 Traceback:
 
