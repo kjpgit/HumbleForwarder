@@ -8,12 +8,9 @@ Takes email received by SES, and sends it to a different
 destination via SES.  Simple address mapping is supported.  Feel free to fork it if you
 want more configurability.
 
-Massively reworked and cleaned up version of
-[this AWS example](https://aws.amazon.com/blogs/messaging-and-targeting/forward-incoming-email-to-an-external-destination/).
-
 ## Setup Instructions
 
-* Follow the [AWS instructions](https://aws.amazon.com/blogs/messaging-and-targeting/forward-incoming-email-to-an-external-destination/), but use this Lambda code (Python 3.8+) instead,
+* Follow these [AWS instructions](https://aws.amazon.com/blogs/messaging-and-targeting/forward-incoming-email-to-an-external-destination/), but use this Lambda code (Python 3.8+) instead,
   and don't add the environment variables for settings.
 
 * Copy and edit the example [config.json](config.json) file in this directory.
