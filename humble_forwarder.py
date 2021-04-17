@@ -296,15 +296,16 @@ class UnitTests(unittest.TestCase):
         ses_recipient = "code@coder.dev"
         config = dict(sender="", default_recipient="someone@secret.com", recipient_map={})
         new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers["To"], "someone@secret.com")
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "someone@secret.com")
         self.assertEqual(new_headers["From"], "code@coder.dev")
+        self.assertEqual(new_headers["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev")
         self.assertEqual(new_headers["Subject"], "test 3 addresses")
         self.assertEqual(new_headers["Reply-To"], "Alpha Sigma <user@users.com>")
         self.assertEqual("Content-Disposition" in new_headers, False)
 
         config = dict(sender="fixed@coder.dev", default_recipient="someone@secret.com", recipient_map={})
         new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers["To"], "someone@secret.com")
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "someone@secret.com")
         self.assertEqual(new_headers["From"], "fixed@coder.dev")
 
     def test_header_changes2(self):
@@ -317,8 +318,9 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(new_headers["Reply-To"], "My Alias <alias@alias.com>")
 
         set_new_message_headers(message, new_headers)
+        # We don't actually expose X_ENVELOPE_TO, it's just used internally to pass data
+        self.assertEqual(message[X_ENVELOPE_TO], None)
         self.assertEqual(message["From"], "code@coder.dev")
-        self.assertEqual(message["To"], "someone@secret.com")
         self.assertEqual(message["Subject"], "test reply-to")
         self.assertEqual(message["Reply-To"], "My Alias <alias@alias.com>")
 
@@ -338,11 +340,11 @@ class UnitTests(unittest.TestCase):
                 }
         config.update(recipient_map=recipient_map)
         new_headers = get_new_message_headers(config, "hacker@hacker.com", message)
-        self.assertEqual(new_headers["To"], "nowhere+label@nowhere.com")
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "nowhere+label@nowhere.com")
         new_headers = get_new_message_headers(config, "code@coder.dev", message)
-        self.assertEqual(new_headers["To"], "A Name <foo+bar@domain.com>")
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "A Name <foo+bar@domain.com>")
         new_headers = get_new_message_headers(config, "code123@coder.dev", message)
-        self.assertEqual(new_headers["To"], "default@fallback.com")
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "default@fallback.com")
 
     def _read_test_file(self, file_name):
         with open(file_name, "rb") as f:
