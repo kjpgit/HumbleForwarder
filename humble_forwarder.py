@@ -159,7 +159,9 @@ def parse_message_from_bytes(raw_bytes):
 
 def get_new_message_headers(config, ses_recipient, message):
     """
-    Get the complete set of new headers.  This one function is where all the forwarding
+    Return the complete set of new headers.  This single function is where all the
+    forwarding logic / magic happens.
+
     NB: This function shouldn't use any global vars, because we want it unit testable.
     Unit tests can pass in their own `config` dict.
     """
