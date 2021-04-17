@@ -18,8 +18,8 @@ import unittest
 import boto3
 
 
-# Configuration file.  See the example config.json in this directory.
-CONFIG_FILE = os.path.join(os.environ.get('LAMBDA_TASK_ROOT', ''), "config.json")
+# This config file must be part of the Lambda package
+CONFIG_FILE = "config.json"
 
 # Internal use only, not an actual sent header
 X_ENVELOPE_DESTINATIONS = "X-Envelope-Destinations"
@@ -173,8 +173,10 @@ def set_new_message_headers(message, new_headers):
 
 def get_runtime_config_dict():
     # A config file is now required
-    with open(CONFIG_FILE, "rb") as f:
+    full_path = os.path.join(os.environ['LAMBDA_TASK_ROOT'], CONFIG_FILE)
+    with open(full_path, "rb") as f:
         config = json.load(f)
+        assert isinstance(config, dict)
     return config
 
 
