@@ -173,9 +173,9 @@ def get_new_message_headers(config, ses_recipient, message):
         if header in message:
             new_headers[header] = message[header]
 
-    # Lookup in recipient_map, if not found, fall back to default_recipient
+    # Lookup in recipient_map, if not found, fall back to default_destination
     new_headers[X_ENVELOPE_TO] = config["recipient_map"].get(ses_recipient,
-            config["default_recipient"])
+            config["default_destination"])
 
     # From must be a verified address
     if config["force_sender"]:
@@ -336,10 +336,10 @@ class UnitTests(unittest.TestCase):
         with open(file_name, "rb") as f:
             return f.read()
 
-    def get_test_config(self, force_sender="", default_recipient="default@secret.com", recipient_map=None):
+    def get_test_config(self, force_sender="", default_destination="default@secret.com", recipient_map=None):
         config = {}
         config.update(force_sender=force_sender)
-        config.update(default_recipient=default_recipient)
+        config.update(default_destination=default_destination)
         if recipient_map is None:
             recipient_map = {}
         config.update(recipient_map=recipient_map)
