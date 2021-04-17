@@ -2,7 +2,7 @@
 Name: HumbleForwarder
 Author: kjp
 
-Humble SES email forwarder.  All forwarding goes to a single address, feel free to
+Humble SES email forwarder.  Simple address mapping is supported.  Feel free to
 fork it if you want more configurability.
 
 Massively reworked and cleaned up version of
@@ -18,7 +18,8 @@ Setup instructions:
 * Consider granting the Lambda `SNS:Publish` permission, and enable its Dead Letter Queue
   so you get notified via SNS if any Lambda fails after 3 async attempts.
 
-* Read the configuration options below, then change them in the code or use environment variables
+* Read the configuration options below.  If you want address mapping, you need
+  to go to Lambda console and do File->New->Paste Contents->Save As "config.json"
 
 Features:
 
@@ -70,7 +71,12 @@ INCOMING_EMAIL_PREFIX = os.getenv('MailS3Prefix', '')
 # If empty, uses the SES recipient address
 SENDER = os.getenv('MailSender', '')
 
-RECIPIENT = os.getenv('MailRecipient', 'to@anywhere.com')
+# The default recipient if no mappings exist
+DEFAULT_RECIPIENT = os.getenv('MailRecipient', 'to@anywhere.com')
+
+# Extra configuration file, such as where to forward the emails, based on the SES
+# user and domain.  See the example config.json in this directory.
+CONFIG_FILE = os.path.join(os.environ.get('LAMBDA_TASK_ROOT', ''), "config.json")
 
 ###############################################################################
 ###############################################################################
@@ -105,9 +111,7 @@ def forward_mail(ses_recipient, message_id):
     # Retrieve the original message from the S3 bucket.
     message = get_message_from_s3(message_id)
 
-    # Get the complete set of new headers.  This one function is where all the forwarding
-    # logic / magic can be contained.
-    config = dict(sender=SENDER, recipient=RECIPIENT)
+    config = get_runtime_config_dict()
     new_headers = get_new_message_headers(config, ses_recipient, message)
 
     # Change all the headers now
@@ -154,7 +158,11 @@ def parse_message_from_bytes(raw_bytes):
 
 
 def get_new_message_headers(config, ses_recipient, message):
-    # NB: This function shouldn't use any global vars, because we want it unit testable.
+    """
+    Get the complete set of new headers.  This one function is where all the forwarding
+    NB: This function shouldn't use any global vars, because we want it unit testable.
+    Unit tests can pass in their own `config` dict.
+    """
     new_headers = {}
 
     # Headers we keep unchanged
@@ -171,8 +179,9 @@ def get_new_message_headers(config, ses_recipient, message):
         if header in message:
             new_headers[header] = message[header]
 
-    # Headers we customize for forwarding logic
-    new_headers["To"] = config["recipient"]
+    # Lookup in recipient_map, if not found, fall back to default_recipient
+    new_headers["To"] = config["recipient_map"].get(ses_recipient,
+            config["default_recipient"])
 
     if config["sender"]:
         new_headers["From"] = config["sender"]
@@ -184,6 +193,7 @@ def get_new_message_headers(config, ses_recipient, message):
     else:
         new_headers["Reply-To"] = message["From"]
 
+    logger.info(json.dumps(dict(new_headers=new_headers), default=str))
     return new_headers
 
 
@@ -215,6 +225,20 @@ Traceback:
 
     new_message.set_content(text)
     return new_message
+
+
+def get_runtime_config_dict():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "rb") as f:
+            config = json.load(f)
+    else:
+        logger.warn(f"config file does not exist: {CONFIG_FILE}")
+        config = {}
+        config.update(recipient_map={})
+
+    config.update(sender=SENDER)
+    config.update(default_recipient=DEFAULT_RECIPIENT)
+    return config
 
 
 def get_ses_recipients(event):
@@ -260,7 +284,7 @@ class UnitTests(unittest.TestCase):
         text = self._read_test_file("tests/multiple_recipients.txt")
         message = parse_message_from_bytes(text)
         ses_recipient = "code@coder.dev"
-        config = dict(sender="", recipient="someone@secret.com")
+        config = dict(sender="", default_recipient="someone@secret.com", recipient_map={})
         new_headers = get_new_message_headers(config, ses_recipient, message)
         self.assertEqual(new_headers["To"], "someone@secret.com")
         self.assertEqual(new_headers["From"], "code@coder.dev")
@@ -268,7 +292,7 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(new_headers["Reply-To"], "Alpha Sigma <user@users.com>")
         self.assertEqual("Content-Disposition" in new_headers, False)
 
-        config = dict(sender="fixed@coder.dev", recipient="someone@secret.com")
+        config = dict(sender="fixed@coder.dev", default_recipient="someone@secret.com", recipient_map={})
         new_headers = get_new_message_headers(config, ses_recipient, message)
         self.assertEqual(new_headers["To"], "someone@secret.com")
         self.assertEqual(new_headers["From"], "fixed@coder.dev")
@@ -277,7 +301,7 @@ class UnitTests(unittest.TestCase):
         text = self._read_test_file("tests/reply_to.txt")
         message = parse_message_from_bytes(text)
         ses_recipient = "code@coder.dev"
-        config = dict(sender="", recipient="someone@secret.com")
+        config = dict(sender="", default_recipient="someone@secret.com", recipient_map={})
         new_headers = get_new_message_headers(config, ses_recipient, message)
         self.assertEqual(new_headers["Subject"], "test reply-to")
         self.assertEqual(new_headers["Reply-To"], "My Alias <alias@alias.com>")
@@ -294,10 +318,27 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(is_ses_spam(event), True)
         self.assertEqual(get_ses_recipients(event), ['code@coder.dev', 'code2@coder.dev'])
 
+    def test_dynamic_mapping(self):
+        text = self._read_test_file("tests/multiple_recipients.txt")
+        message = parse_message_from_bytes(text)
+        config = dict(sender="", default_recipient="default@fallback.com")
+        recipient_map = {
+                "hacker@hacker.com": "nowhere+label@nowhere.com",
+                "code@coder.dev": "A Name <foo+bar@domain.com>",
+                }
+        config.update(recipient_map=recipient_map)
+        new_headers = get_new_message_headers(config, "hacker@hacker.com", message)
+        self.assertEqual(new_headers["To"], "nowhere+label@nowhere.com")
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
+        self.assertEqual(new_headers["To"], "A Name <foo+bar@domain.com>")
+        new_headers = get_new_message_headers(config, "code123@coder.dev", message)
+        self.assertEqual(new_headers["To"], "default@fallback.com")
+
     def _read_test_file(self, file_name):
         with open(file_name, "rb") as f:
             return f.read()
 
 
 if __name__ == '__main__':
+    print(get_runtime_config_dict())
     unittest.main()

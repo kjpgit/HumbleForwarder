@@ -1,0 +1,6 @@
+{
+  "recipient_map": {
+    "code@mydomain.dev": "foo+code@gmail.com",
+    "emergency@mydomain.dev": "bar+emergency@aws.com"
+  }
+}
