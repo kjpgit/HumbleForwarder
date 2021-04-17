@@ -76,6 +76,7 @@ DEFAULT_RECIPIENT = os.getenv('MailRecipient', 'to@anywhere.com')
 
 # Extra configuration file, such as where to forward the emails, based on the SES
 # user and domain.  See the example config.json in this directory.
+# This file is currently optional, but may be the sole config source in the future.
 CONFIG_FILE = os.path.join(os.environ.get('LAMBDA_TASK_ROOT', ''), "config.json")
 
 ###############################################################################
@@ -101,8 +102,8 @@ def lambda_handler(event, context):
     # Any other bogus addresses in the To: header should not be present here.
     ses_recipients = get_ses_recipients(event)
 
-    # This loop is inefficient, but optimizing multiple users is not something
-    # that's a priority for me.
+    # This loop is inefficient, but optimizing an email to multiple users is
+    # not something that's a priority for me.
     for ses_recipient in ses_recipients:
         forward_mail(ses_recipient, message_id)
 
@@ -114,17 +115,16 @@ def forward_mail(ses_recipient, message_id):
     config = get_runtime_config_dict()
     new_headers = get_new_message_headers(config, ses_recipient, message)
 
-    # Change all the headers now
+    # Change all the headers now.  Boom, that was easy!
     set_new_message_headers(message, new_headers)
-
-    # For fault injection (Testing error emails)
-    if os.getenv("TEST_LARGE_BODY"):
-        logger.info("setting a huge body")
-        message.clear_content()
-        message.set_content("x" * 20000000)
 
     if os.getenv("TEST_DEBUG_BODY"):
         logger.info(json.dumps(dict(email_body=message.as_string())))
+
+    if os.getenv("TEST_LARGE_BODY"):
+        logger.info("setting a huge body, should cause an error")
+        message.clear_content()
+        message.set_content("x" * 20000000)
 
     # Send the message
     try:
