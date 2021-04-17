@@ -12,8 +12,8 @@ Setup instructions:
 
 * Follow the AWS blog link above, but use this Lambda code (Python 3.8+) instead.
 
-* Make sure your Lambda has a large enough size and timeout, especially if
-  you want to test the error emails due to too large of body.
+* Make sure your Lambda has a large enough size and timeout, I recommend
+  768MB and 60 seconds.  Python is pretty slow and bloated.
 
 * Consider granting the Lambda `SNS:Publish` permission, and enable its Dead Letter Queue
   so you get notified if any Lambda fails after 3 async attempts.
@@ -36,7 +36,6 @@ Features:
         input_event.Records.0.ses.mail.commonHeaders.subject
     | filter input_event.Records.0.eventSource = 'aws:ses'
     | sort @timestamp desc
-    | limit 20
 
 Other Thanks:
 
