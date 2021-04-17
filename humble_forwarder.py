@@ -134,7 +134,7 @@ def forward_mail(ses_recipient, message_id):
 
 
 def get_message_from_s3(message_id):
-    # NB: This is dumb, but I'm doing it to stay compatible with the original version
+    # NB: This is dumb, but I'm doing it to stay compatible with the original AWS version
     if INCOMING_EMAIL_PREFIX:
         object_path = (INCOMING_EMAIL_PREFIX + "/" + message_id)
     else:
