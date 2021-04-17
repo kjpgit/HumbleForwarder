@@ -134,10 +134,8 @@ def get_message_from_s3(message_id):
     else:
         object_path = message_id
 
-    # Create a new S3 client.
-    client_s3 = boto3.client("s3")
-
     # Get the email object from the S3 bucket.
+    client_s3 = boto3.client("s3")
     object_s3 = client_s3.get_object(Bucket=bucket, Key=object_path)
     raw_bytes = object_s3['Body'].read()
     return parse_message_from_bytes(raw_bytes)
