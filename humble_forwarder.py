@@ -103,6 +103,7 @@ def forward_mail(ses_recipient, message_id):
     message = get_message_from_s3(message_id)
 
     new_headers = get_new_message_headers(g_config, ses_recipient, message)
+    logger.info(json.dumps(dict(new_headers=new_headers), default=str))
 
     # Change all the headers now.  Boom, that was easy!
     set_new_message_headers(message, new_headers)
@@ -187,7 +188,6 @@ def get_new_message_headers(config, ses_recipient, message):
     else:
         new_headers["Reply-To"] = message["From"]
 
-    logger.info(json.dumps(dict(new_headers=new_headers), default=str))
     return new_headers
 
 
