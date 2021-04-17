@@ -5,55 +5,16 @@ Author: kjp
 Humble SES email forwarder.  Simple address mapping is supported.  Feel free to
 fork it if you want more configurability.
 
-Massively reworked and cleaned up version of
-https://aws.amazon.com/blogs/messaging-and-targeting/forward-incoming-email-to-an-external-destination/
-
-Setup instructions:
-
-* Follow the AWS blog link above, but use this Lambda code (Python 3.8+) instead,
-  and don't use the environment variables for settings.
-
-* See the example "config.json" file in this directory and edit it.
-  Go to the Lambda code console and do File->New->Paste Contents->Save As->"config.json"
-  Don't forget to deploy again after uploading it!
-
-* Make sure your Lambda has a large enough size and timeout, I recommend
-  768MB and 60 seconds to be safe.  Python is pretty slow and bloated.
-
-* Consider granting the Lambda `SNS:Publish` permission, and enable its Dead Letter Queue
-  so you get notified via SNS if any Lambda fails after 3 async attempts.
-
-Features:
-
-* Don't forward emails marked as spam / virus.  Note you need to have scanning enabled.
-
-* The body/content is not modified, all attachments are kept
-
-* Send an error email if there was a problem sending (like body too large).
-  You can test this by setting the env var TEST_LARGE_BODY, to generate a 20MB body.
-  A 768MB Lambda takes 15 seconds for this test.
-
-* JSON logging.  You can run this cloudwatch logs insights query to check on your emails:
-
-     fields @timestamp, input_event.Records.0.ses.mail.commonHeaders.from.0,
-        input_event.Records.0.ses.mail.commonHeaders.subject
-    | filter input_event.Records.0.eventSource = 'aws:ses'
-    | sort @timestamp desc
-
-Other Thanks:
-
-* Got some inspiration from https://github.com/chrismarcellino/lambda-ses-email-forwarder/
-
+See README.md for full documentation
 """
-
-import unittest
-import traceback
-import json
-import os
-import logging
-import email.policy
-import email.parser
 import email.message
+import email.parser
+import email.policy
+import json
+import logging
+import os
+import traceback
+import unittest
 
 import boto3
 from botocore.exceptions import ClientError
@@ -178,9 +139,6 @@ def get_new_message_headers(config, ses_recipient, message):
     new_headers[X_ENVELOPE_TO] = config["recipient_map"].get(ses_recipient,
             config["default_destination"])
 
-    # Optional: Append envelope destination to To: header.
-    # This is useful if the desination is adding a +label, and we want
-    # to use gmail's built in filtering / categorization.
     if config.get("update_to_header_with_destination", False):
         new_headers["To"] = message.get("To", "")  # Don't assume To exists
         if new_headers["To"]:
