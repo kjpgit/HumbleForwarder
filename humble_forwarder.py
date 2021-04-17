@@ -251,16 +251,14 @@ def send_raw_email(message):
 
 class UnitTests(unittest.TestCase):
     def test_multiple_recipients(self):
-        with open("tests/multiple_recipients.txt", "rb") as f:
-            text = f.read()
+        text = self._read_test_file("tests/multiple_recipients.txt")
         message = parse_message_from_bytes(text)
         # This is why we shouldn't trust the original To header,
         # it can have all kind of junk
         self.assertEqual(len(message["To"].addresses), 3)
 
     def test_header_changes(self):
-        with open("tests/multiple_recipients.txt", "rb") as f:
-            text = f.read()
+        text = self._read_test_file("tests/multiple_recipients.txt")
         message = parse_message_from_bytes(text)
         ses_recipient = "code@coder.dev"
         config = dict(sender="", recipient="someone@secret.com")
@@ -277,8 +275,7 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(new_headers["From"], "fixed@coder.dev")
 
     def test_header_changes2(self):
-        with open("tests/reply_to.txt", "rb") as f:
-            text = f.read()
+        text = self._read_test_file("tests/reply_to.txt")
         message = parse_message_from_bytes(text)
         ses_recipient = "code@coder.dev"
         config = dict(sender="", recipient="someone@secret.com")
@@ -293,10 +290,14 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(message["Reply-To"], "My Alias <alias@alias.com>")
 
     def test_event_parsing(self):
-        with open("tests/event.json", "rb") as f:
-            event = json.load(f)
+        text = self._read_test_file("tests/event.json")
+        event = json.loads(text)
         self.assertEqual(is_ses_spam(event), True)
         self.assertEqual(get_ses_recipients(event), ['code@coder.dev', 'code2@coder.dev'])
+
+    def _read_test_file(self, file_name):
+        with open(file_name, "rb") as f:
+            return f.read()
 
 
 if __name__ == '__main__':
