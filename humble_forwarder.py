@@ -209,7 +209,7 @@ def set_new_message_headers(message, new_headers):
         del message[header]
     for (name, value) in new_headers.items():
         if name == X_ENVELOPE_TO:
-            # This is only used internally by send_raw_email
+            # This is only used internally
             pass
         else:
             message[name] = value
