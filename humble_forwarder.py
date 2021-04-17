@@ -13,10 +13,10 @@ Setup instructions:
 * Follow the AWS blog link above, but use this Lambda code (Python 3.8+) instead.
 
 * Make sure your Lambda has a large enough size and timeout, I recommend
-  768MB and 60 seconds.  Python is pretty slow and bloated.
+  768MB and 60 seconds to be safe.  Python is pretty slow and bloated.
 
 * Consider granting the Lambda `SNS:Publish` permission, and enable its Dead Letter Queue
-  so you get notified if any Lambda fails after 3 async attempts.
+  so you get notified via SNS if any Lambda fails after 3 async attempts.
 
 * Read the configuration options below, then change them in the code or use environment variables
 
