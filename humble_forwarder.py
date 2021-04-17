@@ -110,7 +110,7 @@ def get_new_message_headers(config, ses_recipient, message):
     """
     new_headers = {}
 
-    # Headers we keep unchanged
+    # Headers to keep.  Other unknown headers are removed.
     headers_to_keep = [
             "Date",
             "Subject",
