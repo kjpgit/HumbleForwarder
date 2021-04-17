@@ -54,11 +54,6 @@ If this string is not empty, it is used as the `From` for all emails.
 If this string is empty, `From` will be set to the SES address who received it (`ses_recipient`).
 Note that `From` must always be a verified address.
 
-### update_to_header_with_destination
-
-If this is `true`, the `To` header will have the envelope destination(s) appended.
-This is useful if the destination is a `+label` address at Gmail and you want create a filter for it using `To`.
-
 ### incoming_email_bucket
 
 The S3 bucket that contains the received email (required). Also set `incoming_email_prefix` if necessary.

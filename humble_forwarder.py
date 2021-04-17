@@ -131,14 +131,6 @@ def get_new_message_headers(config, ses_recipient, message):
     new_headers[X_ENVELOPE_DESTINATIONS] = string_to_list(
             config["recipient_map"].get(ses_recipient, config["default_destination"]))
 
-    # Optional: Add envelope destination(s) to To: header
-    if config.get("update_to_header_with_destination", False):
-        new_headers["To"] = message.get("To", "")  # Don't assume To exists
-        for destination in new_headers[X_ENVELOPE_DESTINATIONS]:
-            if new_headers["To"]:
-                new_headers["To"] += ", "
-            new_headers["To"] += destination
-
     # From must be a verified address
     if config["force_sender"]:
         new_headers["From"] = config["force_sender"]
@@ -255,10 +247,9 @@ class UnitTests(unittest.TestCase):
         message = parse_message_from_bytes(text)
         ses_recipient = "code@coder.dev"
         config = self.get_test_config(default_destination=["a@a.com", "b@b.com"])
-        config.update(update_to_header_with_destination=True)
         new_headers = get_new_message_headers(config, ses_recipient, message)
         self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ['a@a.com', 'b@b.com'])
-        self.assertEqual(new_headers["To"], 'hacker@hacker.com, code@coder.dev, code2@coder.dev, a@a.com, b@b.com')
+        self.assertEqual(new_headers["To"], 'hacker@hacker.com, code@coder.dev, code2@coder.dev')
 
     def test_header_force_sender(self):
         text = self._read_test_file("tests/multiple_recipients.txt")
@@ -267,15 +258,6 @@ class UnitTests(unittest.TestCase):
         config = self.get_test_config(force_sender="fixed@coder.dev")
         new_headers = get_new_message_headers(config, ses_recipient, message)
         self.assertEqual(new_headers["From"], "fixed@coder.dev")
-
-    def test_header_update_to(self):
-        text = self._read_test_file("tests/multiple_recipients.txt")
-        message = parse_message_from_bytes(text)
-        ses_recipient = "code@coder.dev"
-        config = self.get_test_config(default_destination="some+label@mydomain.dev")
-        config.update(update_to_header_with_destination=True)
-        new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev, some+label@mydomain.dev")
 
     def test_dynamic_mapping(self):
         text = self._read_test_file("tests/multiple_recipients.txt")
