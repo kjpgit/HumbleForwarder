@@ -89,6 +89,7 @@ def lambda_handler(event, context):
 
     # These are the valid recipient(s) for your domain.
     # Any other bogus addresses in the To: header should not be present here.
+    # Note that SES can show +labels here, e.g. "code+blah@mydomain.dev".
     ses_recipients = get_ses_recipients(event)
 
     # This loop is inefficient, but optimizing an email to multiple users is
