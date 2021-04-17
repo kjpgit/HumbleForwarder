@@ -10,16 +10,18 @@ https://aws.amazon.com/blogs/messaging-and-targeting/forward-incoming-email-to-a
 
 Setup instructions:
 
-* Follow the AWS blog link above, but use this Lambda code (Python 3.8+) instead.
+* Follow the AWS blog link above, but use this Lambda code (Python 3.8+) instead,
+  and don't use the environment variables for settings.
+
+* See the example "config.json" file in this directory and edit it.
+  Go to the Lambda code console and do File->New->Paste Contents->Save As->"config.json"
+  Don't forget to deploy again after uploading it!
 
 * Make sure your Lambda has a large enough size and timeout, I recommend
   768MB and 60 seconds to be safe.  Python is pretty slow and bloated.
 
 * Consider granting the Lambda `SNS:Publish` permission, and enable its Dead Letter Queue
   so you get notified via SNS if any Lambda fails after 3 async attempts.
-
-* Read the configuration options below.  If you want address mapping, you need
-  to go to Lambda console and do File->New->Paste Contents->Save As "config.json"
 
 Features:
 
@@ -56,39 +58,25 @@ import email.message
 import boto3
 from botocore.exceptions import ClientError
 
-###############################################################################
-#
-# Required configuration.  Can set here, or in environment var(s), your choice
-#
-###############################################################################
-REGION = os.getenv('Region', 'us-east-1')
 
-INCOMING_EMAIL_BUCKET = os.getenv('MailS3Bucket', 'yourbucketname')
-
-# Don't have a leading or trailing /, it will be added automatically
-INCOMING_EMAIL_PREFIX = os.getenv('MailS3Prefix', '')
-
-# If empty, uses the SES recipient address
-SENDER = os.getenv('MailSender', '')
-
-# The default recipient if no mappings exist
-DEFAULT_RECIPIENT = os.getenv('MailRecipient', 'to@anywhere.com')
-
-# Extra configuration file, such as where to forward the emails, based on the SES
-# user and domain.  See the example config.json in this directory.
-# This file is currently optional, but may be the sole config source in the future.
+# Configuration file.  See the example config.json in this directory.
 CONFIG_FILE = os.path.join(os.environ.get('LAMBDA_TASK_ROOT', ''), "config.json")
 
-###############################################################################
-###############################################################################
-
 X_ENVELOPE_TO = "X-Envelope-To"
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+g_config = None
 
 
 def lambda_handler(event, context):
     logger.info(json.dumps(dict(input_event=event)))
+
+    # Only load the runtime settings file once
+    global g_config
+    if g_config is None:
+        g_config = get_runtime_config_dict()
 
     # Get the unique ID of the message. This corresponds to the name of the file in S3.
     message_id = event['Records'][0]['ses']['mail']['messageId']
@@ -113,8 +101,7 @@ def forward_mail(ses_recipient, message_id):
     # Retrieve the original message from the S3 bucket.
     message = get_message_from_s3(message_id)
 
-    config = get_runtime_config_dict()
-    new_headers = get_new_message_headers(config, ses_recipient, message)
+    new_headers = get_new_message_headers(g_config, ses_recipient, message)
 
     # Change all the headers now.  Boom, that was easy!
     set_new_message_headers(message, new_headers)
@@ -138,9 +125,11 @@ def forward_mail(ses_recipient, message_id):
 
 
 def get_message_from_s3(message_id):
-    # NB: This is dumb, but I'm doing it to stay compatible with the original AWS version
-    if INCOMING_EMAIL_PREFIX:
-        object_path = (INCOMING_EMAIL_PREFIX + "/" + message_id)
+    # Adding a / stays compatible with the original AWS version
+    bucket = g_config["incoming_email_bucket"]
+    prefix = g_config["incoming_email_prefix"]
+    if prefix:
+        object_path = (prefix + "/" + message_id)
     else:
         object_path = message_id
 
@@ -148,7 +137,7 @@ def get_message_from_s3(message_id):
     client_s3 = boto3.client("s3")
 
     # Get the email object from the S3 bucket.
-    object_s3 = client_s3.get_object(Bucket=INCOMING_EMAIL_BUCKET, Key=object_path)
+    object_s3 = client_s3.get_object(Bucket=bucket, Key=object_path)
     raw_bytes = object_s3['Body'].read()
     return parse_message_from_bytes(raw_bytes)
 
@@ -189,8 +178,8 @@ def get_new_message_headers(config, ses_recipient, message):
             config["default_recipient"])
 
     # From must be a verified address
-    if config["sender"]:
-        new_headers["From"] = config["sender"]
+    if config["force_sender"]:
+        new_headers["From"] = config["force_sender"]
     else:
         new_headers["From"] = ses_recipient
 
@@ -238,16 +227,9 @@ Traceback:
 
 
 def get_runtime_config_dict():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "rb") as f:
-            config = json.load(f)
-    else:
-        logger.warn(f"config file does not exist: {CONFIG_FILE}")
-        config = {}
-        config.update(recipient_map={})
-
-    config.update(sender=SENDER)
-    config.update(default_recipient=DEFAULT_RECIPIENT)
+    # A config file is now required
+    with open(CONFIG_FILE, "rb") as f:
+        config = json.load(f)
     return config
 
 
@@ -270,7 +252,7 @@ def is_ses_spam(event):
 
 
 def send_raw_email(message, *, envelope_destination):
-    client_ses = boto3.client('ses', REGION)
+    client_ses = boto3.client('ses', g_config["region"])
     response = client_ses.send_raw_email(
             Source=message['From'],
             Destinations=[envelope_destination],
@@ -282,47 +264,67 @@ def send_raw_email(message, *, envelope_destination):
 
 
 
+
 class UnitTests(unittest.TestCase):
     def test_multiple_recipients(self):
         text = self._read_test_file("tests/multiple_recipients.txt")
         message = parse_message_from_bytes(text)
-        # This is why we shouldn't trust the original To header,
-        # it can have all kind of junk
         self.assertEqual(len(message["To"].addresses), 3)
 
     def test_header_changes(self):
         text = self._read_test_file("tests/multiple_recipients.txt")
         message = parse_message_from_bytes(text)
         ses_recipient = "code@coder.dev"
-        config = dict(sender="", default_recipient="someone@secret.com", recipient_map={})
+        config = self.get_test_config()
         new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "someone@secret.com")
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "default@secret.com")
         self.assertEqual(new_headers["From"], "code@coder.dev")
         self.assertEqual(new_headers["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev")
         self.assertEqual(new_headers["Subject"], "test 3 addresses")
         self.assertEqual(new_headers["Reply-To"], "Alpha Sigma <user@users.com>")
         self.assertEqual("Content-Disposition" in new_headers, False)
 
-        config = dict(sender="fixed@coder.dev", default_recipient="someone@secret.com", recipient_map={})
-        new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "someone@secret.com")
-        self.assertEqual(new_headers["From"], "fixed@coder.dev")
-
-    def test_header_changes2(self):
-        text = self._read_test_file("tests/reply_to.txt")
-        message = parse_message_from_bytes(text)
-        ses_recipient = "code@coder.dev"
-        config = dict(sender="", default_recipient="someone@secret.com", recipient_map={})
-        new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers["Subject"], "test reply-to")
-        self.assertEqual(new_headers["Reply-To"], "My Alias <alias@alias.com>")
-
         set_new_message_headers(message, new_headers)
         # We don't actually expose X_ENVELOPE_TO, it's just used internally to pass data
         self.assertEqual(message[X_ENVELOPE_TO], None)
         self.assertEqual(message["From"], "code@coder.dev")
-        self.assertEqual(message["Subject"], "test reply-to")
-        self.assertEqual(message["Reply-To"], "My Alias <alias@alias.com>")
+        self.assertEqual(message["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev")
+        self.assertEqual(message["Subject"], "test 3 addresses")
+        self.assertEqual(message["Reply-To"], "Alpha Sigma <user@users.com>")
+
+    def test_header_reply_to(self):
+        text = self._read_test_file("tests/reply_to.txt")
+        message = parse_message_from_bytes(text)
+        ses_recipient = "code@coder.dev"
+        config = self.get_test_config()
+        new_headers = get_new_message_headers(config, ses_recipient, message)
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "default@secret.com")
+        self.assertEqual(new_headers["From"], "code@coder.dev")
+        self.assertEqual(new_headers["Subject"], "test reply-to")
+        self.assertEqual(new_headers["Reply-To"], "My Alias <alias@alias.com>")
+
+    def test_header_force_sender(self):
+        text = self._read_test_file("tests/multiple_recipients.txt")
+        message = parse_message_from_bytes(text)
+        ses_recipient = "code@coder.dev"
+        config = self.get_test_config(force_sender="fixed@coder.dev")
+        new_headers = get_new_message_headers(config, ses_recipient, message)
+        self.assertEqual(new_headers["From"], "fixed@coder.dev")
+
+    def test_dynamic_mapping(self):
+        text = self._read_test_file("tests/multiple_recipients.txt")
+        message = parse_message_from_bytes(text)
+        recipient_map = {
+                "hacker@hacker.com": "nowhere+label@nowhere.com",
+                "code@coder.dev": "A Name <foo+bar@domain.com>",
+                }
+        config = self.get_test_config(recipient_map=recipient_map)
+        new_headers = get_new_message_headers(config, "hacker@hacker.com", message)
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "nowhere+label@nowhere.com")
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "A Name <foo+bar@domain.com>")
+        new_headers = get_new_message_headers(config, "code123@coder.dev", message)
+        self.assertEqual(new_headers[X_ENVELOPE_TO], "default@secret.com")
 
     def test_event_parsing(self):
         text = self._read_test_file("tests/event.json")
@@ -330,27 +332,19 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(is_ses_spam(event), True)
         self.assertEqual(get_ses_recipients(event), ['code@coder.dev', 'code2@coder.dev'])
 
-    def test_dynamic_mapping(self):
-        text = self._read_test_file("tests/multiple_recipients.txt")
-        message = parse_message_from_bytes(text)
-        config = dict(sender="", default_recipient="default@fallback.com")
-        recipient_map = {
-                "hacker@hacker.com": "nowhere+label@nowhere.com",
-                "code@coder.dev": "A Name <foo+bar@domain.com>",
-                }
-        config.update(recipient_map=recipient_map)
-        new_headers = get_new_message_headers(config, "hacker@hacker.com", message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "nowhere+label@nowhere.com")
-        new_headers = get_new_message_headers(config, "code@coder.dev", message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "A Name <foo+bar@domain.com>")
-        new_headers = get_new_message_headers(config, "code123@coder.dev", message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "default@fallback.com")
-
     def _read_test_file(self, file_name):
         with open(file_name, "rb") as f:
             return f.read()
 
+    def get_test_config(self, force_sender="", default_recipient="default@secret.com", recipient_map=None):
+        config = {}
+        config.update(force_sender=force_sender)
+        config.update(default_recipient=default_recipient)
+        if recipient_map is None:
+            recipient_map = {}
+        config.update(recipient_map=recipient_map)
+        return config
+
 
 if __name__ == '__main__':
-    print(get_runtime_config_dict())
     unittest.main()

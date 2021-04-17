@@ -1,6 +1,11 @@
 {
   "recipient_map": {
     "code@mydomain.dev": "foo+code@gmail.com",
-    "emergency@mydomain.dev": "bar+emergency@aws.com"
-  }
+    "emergency@mydomain.dev": "bar+emergency@gmail.com"
+  },
+  "region": "us-east-1",
+  "incoming_email_bucket": "mybucket",
+  "incoming_email_prefix": "mysubdir",
+  "force_sender": "",
+  "default_recipient": "recipient-address-if-not-in-recipient_map@gmail.com"
 }
