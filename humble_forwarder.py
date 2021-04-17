@@ -127,13 +127,13 @@ def forward_mail(ses_recipient, message_id):
 
 
 def get_message_from_s3(message_id):
-    # Adding a / stays compatible with the original AWS version
     bucket = g_config["incoming_email_bucket"]
     prefix = g_config["incoming_email_prefix"]
     if prefix:
-        object_path = (prefix + "/" + message_id)
-    else:
-        object_path = message_id
+        # Normalize S3 paths to be user friendly.
+        prefix = prefix.strip("/") + "/"
+
+    object_path = prefix + message_id
 
     # Get the email object from the S3 bucket.
     client_s3 = boto3.client("s3")
