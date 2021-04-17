@@ -8,5 +8,5 @@
   "incoming_email_prefix": "mysubdir",
   "force_sender": "",
   "default_destination": "destination-if-not-in-recipient_map@gmail.com",
-  "update_to_header_with_destination": True
+  "update_to_header_with_destination": true
 }
