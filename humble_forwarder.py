@@ -82,6 +82,7 @@ CONFIG_FILE = os.path.join(os.environ.get('LAMBDA_TASK_ROOT', ''), "config.json"
 ###############################################################################
 ###############################################################################
 
+X_ENVELOPE_TO = "X-Envelope-To"
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -128,12 +129,12 @@ def forward_mail(ses_recipient, message_id):
 
     # Send the message
     try:
-        send_raw_email(message)
+        send_raw_email(message, envelope_destination=new_headers[X_ENVELOPE_TO])
     except ClientError as e:
         logger.error("error sending forwarded email", exc_info=True)
         traceback_string = traceback.format_exc()
         error_message = create_error_email(message, traceback_string)
-        send_raw_email(error_message)
+        send_raw_email(error_message, envelope_destination=error_message["To"])
 
 
 def get_message_from_s3(message_id):
@@ -169,12 +170,14 @@ def get_new_message_headers(config, ses_recipient, message):
 
     # Headers we keep unchanged
     headers_to_keep = [
+            "Date",
+            "Subject",
+            "To",
+            "CC",
             "MIME-Version",
             "Content-Type",
             "Content-Disposition",
             "Content-Transfer-Encoding",
-            "Date",
-            "Subject",
             ]
 
     for header in headers_to_keep:
@@ -182,9 +185,10 @@ def get_new_message_headers(config, ses_recipient, message):
             new_headers[header] = message[header]
 
     # Lookup in recipient_map, if not found, fall back to default_recipient
-    new_headers["To"] = config["recipient_map"].get(ses_recipient,
+    new_headers[X_ENVELOPE_TO] = config["recipient_map"].get(ses_recipient,
             config["default_recipient"])
 
+    # From must be a verified address
     if config["sender"]:
         new_headers["From"] = config["sender"]
     else:
@@ -204,7 +208,11 @@ def set_new_message_headers(message, new_headers):
     for header in message.keys():
         del message[header]
     for (name, value) in new_headers.items():
-        message[name] = value
+        if name == X_ENVELOPE_TO:
+            # This is only used internally by send_raw_email
+            pass
+        else:
+            message[name] = value
 
 
 def create_error_email(attempted_message, traceback_string):
@@ -261,13 +269,11 @@ def is_ses_spam(event):
     return is_fail
 
 
-def send_raw_email(message):
-    # TODO: I am not using separate envelope addresses, especially for To:.
-    # If that is allowed by SES, and avoids mangling To:, let me know.
+def send_raw_email(message, *, envelope_destination):
     client_ses = boto3.client('ses', REGION)
     response = client_ses.send_raw_email(
             Source=message['From'],
-            Destinations=[message['To']],
+            Destinations=[envelope_destination],
             RawMessage={
                 'Data': message.as_string()
                 }
