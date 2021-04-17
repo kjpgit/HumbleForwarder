@@ -68,8 +68,7 @@ INCOMING_EMAIL_BUCKET = os.getenv('MailS3Bucket', 'yourbucketname')
 # Don't have a leading or trailing /, it will be added automatically
 INCOMING_EMAIL_PREFIX = os.getenv('MailS3Prefix', '')
 
-# If empty, uses what was in the original 'To' header
-# This must be a verified address
+# If empty, uses the SES recipient address
 SENDER = os.getenv('MailSender', '')
 
 RECIPIENT = os.getenv('MailRecipient', 'to@anywhere.com')
@@ -89,18 +88,42 @@ def lambda_handler(event, context):
     logger.debug(json.dumps(dict(message_id=message_id)))
 
     # Check for spam / virus
-    if is_ses_spam(event['Records'][0]['ses']['receipt']):
+    if is_ses_spam(event):
         logger.error(json.dumps(dict(message="rejecting spam message", message_id=message_id)))
         return
 
-    # Retrieve the file from the S3 bucket.
-    original_message = get_message_from_s3(message_id)
+    # These are the valid recipient(s) for your domain.
+    # Any other bogus addresses in the To: header should not be present here.
+    ses_recipients = get_ses_recipients(event)
 
-    # Create the message.
+    # This loop is inefficient, but optimizing multiple users is not something
+    # that's a priority for me.
+    for ses_recipient in ses_recipients:
+        forward_mail(ses_recipient, message_id)
+
+
+def forward_mail(ses_recipient, message_id):
+    # Retrieve the original message from the S3 bucket.
+    message = get_message_from_s3(message_id)
+
+    # Get the complete set of new headers.  This one function is where all the forwarding
+    # logic / magic can be contained.
     config = dict(sender=SENDER, recipient=RECIPIENT)
-    message = create_new_email(config, original_message['raw_bytes'])
+    new_headers = get_new_message_headers(config, ses_recipient, message)
 
-    # Send the email
+    # Change all the headers now
+    set_new_message_headers(message, new_headers)
+
+    # For fault injection (Testing error emails)
+    if os.getenv("TEST_LARGE_BODY"):
+        logger.info("setting a huge body")
+        message.clear_content()
+        message.set_content("x" * 20000000)
+
+    if os.getenv("TEST_DEBUG_BODY"):
+        logger.info(json.dumps(dict(email_body=message.as_string())))
+
+    # Send the message
     try:
         send_raw_email(message)
     except ClientError as e:
@@ -123,25 +146,20 @@ def get_message_from_s3(message_id):
     # Get the email object from the S3 bucket.
     object_s3 = client_s3.get_object(Bucket=INCOMING_EMAIL_BUCKET, Key=object_path)
     raw_bytes = object_s3['Body'].read()
-
-    ret = {
-        "raw_bytes": raw_bytes,
-    }
-    return ret
+    return parse_message_from_bytes(raw_bytes)
 
 
-def create_new_email(config, original_raw_bytes):
+def parse_message_from_bytes(raw_bytes):
     parser = email.parser.BytesParser(policy=email.policy.SMTP)
-    original_message = parser.parsebytes(original_raw_bytes, headersonly=True)
-    new_message = parser.parsebytes(original_raw_bytes, headersonly=False)
+    return parser.parsebytes(raw_bytes)
 
-    # Clear all headers, we will add only the ones we want
-    # We don't need to keep anything else like DKIM, return paths, etc. from the original message.
-    for header in new_message.keys():
-        del new_message[header]
+
+def get_new_message_headers(config, ses_recipient, message):
+    # NB: This function shouldn't use any global vars, because we want it unit testable.
+    new_headers = {}
 
     # Headers we keep unchanged
-    keep_headers = [
+    headers_to_keep = [
             "MIME-Version",
             "Content-Type",
             "Content-Disposition",
@@ -150,30 +168,32 @@ def create_new_email(config, original_raw_bytes):
             "Subject",
             ]
 
-    for header in keep_headers:
-        if header in original_message:
-            new_message[header] = original_message[header]
+    for header in headers_to_keep:
+        if header in message:
+            new_headers[header] = message[header]
 
-    # Headers that are different from the original
-    new_message["To"] = config["recipient"]
+    # Headers we customize for forwarding logic
+    new_headers["To"] = config["recipient"]
 
     if config["sender"]:
-        new_message["From"] = config["sender"]
+        new_headers["From"] = config["sender"]
     else:
-        new_message["From"] = original_message["To"]
+        new_headers["From"] = ses_recipient
 
-    if original_message["Reply-To"]:
-        new_message["Reply-To"] = original_message["Reply-To"]
+    if message["Reply-To"]:
+        new_headers["Reply-To"] = message["Reply-To"]
     else:
-        new_message["Reply-To"] = original_message["From"]
+        new_headers["Reply-To"] = message["From"]
 
-    # For fault injection (Testing error emails)
-    if os.getenv("TEST_LARGE_BODY"):
-        logger.info("setting a huge body")
-        new_message.clear_content()
-        new_message.set_content("x" * 20000000)
+    return new_headers
 
-    return new_message
+
+def set_new_message_headers(message, new_headers):
+    # Clear all headers
+    for header in message.keys():
+        del message[header]
+    for (name, value) in new_headers.items():
+        message[name] = value
 
 
 def create_error_email(attempted_message, traceback_string):
@@ -198,7 +218,13 @@ Traceback:
     return new_message
 
 
-def is_ses_spam(receipt):
+def get_ses_recipients(event):
+    receipt = event['Records'][0]['ses']['receipt']
+    return receipt["recipients"]
+
+
+def is_ses_spam(event):
+    receipt = event['Records'][0]['ses']['receipt']
     verdicts = ['spamVerdict', 'virusVerdict', 'spfVerdict', 'dkimVerdict', 'dmarcVerdict']
     is_fail = False
     for verdict in verdicts:
@@ -223,17 +249,54 @@ def send_raw_email(message):
 
 
 
-# TODO: Add some actual tests
 class UnitTests(unittest.TestCase):
-    def test_email_parser(self):
-        with open("test.txt", "rb") as f:
+    def test_multiple_recipients(self):
+        with open("tests/multiple_recipients.txt", "rb") as f:
             text = f.read()
-        config = dict(sender="", recipient="Blah <blah@test.com>")
-        new_message = create_new_email(config, text)
-        print(new_message.as_string())
-        error_message = create_error_email(new_message, "example traceback")
-        print(error_message.as_string())
-        #self.assertEqual(p.get_header_names(), ['From', 'Date', 'To'])
+        message = parse_message_from_bytes(text)
+        # This is why we shouldn't trust the original To header,
+        # it can have all kind of junk
+        self.assertEqual(len(message["To"].addresses), 3)
+
+    def test_header_changes(self):
+        with open("tests/multiple_recipients.txt", "rb") as f:
+            text = f.read()
+        message = parse_message_from_bytes(text)
+        ses_recipient = "code@coder.dev"
+        config = dict(sender="", recipient="someone@secret.com")
+        new_headers = get_new_message_headers(config, ses_recipient, message)
+        self.assertEqual(new_headers["To"], "someone@secret.com")
+        self.assertEqual(new_headers["From"], "code@coder.dev")
+        self.assertEqual(new_headers["Subject"], "test 3 addresses")
+        self.assertEqual(new_headers["Reply-To"], "Alpha Sigma <user@users.com>")
+        self.assertEqual("Content-Disposition" in new_headers, False)
+
+        config = dict(sender="fixed@coder.dev", recipient="someone@secret.com")
+        new_headers = get_new_message_headers(config, ses_recipient, message)
+        self.assertEqual(new_headers["To"], "someone@secret.com")
+        self.assertEqual(new_headers["From"], "fixed@coder.dev")
+
+    def test_header_changes2(self):
+        with open("tests/reply_to.txt", "rb") as f:
+            text = f.read()
+        message = parse_message_from_bytes(text)
+        ses_recipient = "code@coder.dev"
+        config = dict(sender="", recipient="someone@secret.com")
+        new_headers = get_new_message_headers(config, ses_recipient, message)
+        self.assertEqual(new_headers["Subject"], "test reply-to")
+        self.assertEqual(new_headers["Reply-To"], "My Alias <alias@alias.com>")
+
+        set_new_message_headers(message, new_headers)
+        self.assertEqual(message["From"], "code@coder.dev")
+        self.assertEqual(message["To"], "someone@secret.com")
+        self.assertEqual(message["Subject"], "test reply-to")
+        self.assertEqual(message["Reply-To"], "My Alias <alias@alias.com>")
+
+    def test_event_parsing(self):
+        with open("tests/event.json", "rb") as f:
+            event = json.load(f)
+        self.assertEqual(is_ses_spam(event), True)
+        self.assertEqual(get_ses_recipients(event), ['code@coder.dev', 'code2@coder.dev'])
 
 
 if __name__ == '__main__':

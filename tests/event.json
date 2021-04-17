@@ -1,0 +1,33 @@
+{
+  "Records": [
+    {
+      "eventSource": "aws:ses",
+      "eventVersion": "1.0",
+      "ses": {
+        "receipt": {
+          "timestamp": "2021-04-16T13:23:53.825Z",
+          "processingTimeMillis": 454,
+          "recipients": [
+            "code@coder.dev",
+            "code2@coder.dev"
+          ],
+          "spamVerdict": {
+            "status": "FAIL"
+          },
+          "virusVerdict": {
+            "status": "DISABLED"
+          },
+          "spfVerdict": {
+            "status": "PASS"
+          },
+          "dkimVerdict": {
+            "status": "PASS"
+          },
+          "dmarcVerdict": {
+            "status": "PASS"
+          }
+        }
+      }
+    }
+  ]
+}
