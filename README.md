@@ -62,7 +62,7 @@ Note that `From` must always be a verified address.
 
 ### update_to_header_with_destination
 
-If this is `true`, the `To` header will have the `envelope_destination` appended.
+If this is `true`, the `To` header will have the envelope destination(s) appended.
 This is useful if the destination is a `+label` address at Gmail and you want create a filter for it using `To`.
 
 ### incoming_email_bucket
