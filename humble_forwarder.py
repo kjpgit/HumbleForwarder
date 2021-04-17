@@ -262,6 +262,8 @@ def is_ses_spam(event):
 
 
 def send_raw_email(message):
+    # TODO: I am not using separate envelope addresses, especially for To:.
+    # If that is allowed by SES, and avoids mangling To:, let me know.
     client_ses = boto3.client('ses', REGION)
     response = client_ses.send_raw_email(
             Source=message['From'],
