@@ -32,9 +32,6 @@ Massively reworked and cleaned up version of
 
 * The body/content is not modified, all attachments are kept.
 
-* Sends a small error email if there was a problem forwarding (like body too large).
-  For some reason, SES can receive a 30MB email, but only send a 10MB one.
-
 * JSON logging.  You can run this Cloudwatch Logs Insights query to check on your emails:
 
          fields @timestamp, input_event.Records.0.ses.mail.commonHeaders.from.0,

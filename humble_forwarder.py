@@ -13,11 +13,9 @@ import email.policy
 import json
 import logging
 import os
-import traceback
 import unittest
 
 import boto3
-from botocore.exceptions import ClientError
 
 
 # Configuration file.  See the example config.json in this directory.
@@ -73,19 +71,12 @@ def forward_mail(ses_recipient, message_id):
     if os.getenv("TEST_DEBUG_BODY"):
         logger.info(json.dumps(dict(email_body=message.as_string())))
 
-    if os.getenv("TEST_LARGE_BODY"):
-        logger.info("setting a huge body, should cause an error")
-        message.clear_content()
-        message.set_content("x" * 20000000)
-
     # Send the message
-    try:
-        send_raw_email(message, envelope_destinations=new_headers[X_ENVELOPE_DESTINATIONS])
-    except ClientError as e:
-        logger.error("error sending forwarded email", exc_info=True)
-        traceback_string = traceback.format_exc()
-        error_message = create_error_email(message, traceback_string)
-        send_raw_email(error_message, envelope_destinations=[error_message["To"]])
+    # Note: I used to catch ClientError and send a special email on failure,
+    # but I removed that code.  Using Lambda async DLQ+SNS catches all failures and
+    # is significantly less complex (and more humble!).
+    envelope_destinations = new_headers[X_ENVELOPE_DESTINATIONS]
+    send_raw_email(message, envelope_destinations=envelope_destinations)
 
 
 def get_message_from_s3(message_id):
@@ -178,28 +169,6 @@ def set_new_message_headers(message, new_headers):
             pass
         else:
             message[name] = value
-
-
-def create_error_email(attempted_message, traceback_string):
-    # Create a new message
-    new_message = email.message.EmailMessage(policy=email.policy.SMTP)
-    new_message["From"] = attempted_message["From"]
-    new_message["To"] = attempted_message["To"]
-    new_message["Subject"] = "Email forwarding error"
-
-    text = f"""
-There was an error forwarding an email to SES.
-
-Original Sender: {attempted_message["Reply-To"]}
-Original Subject: {attempted_message["Subject"]}
-
-Traceback:
-
-{traceback_string}
-        """.strip()
-
-    new_message.set_content(text)
-    return new_message
 
 
 def get_runtime_config_dict():
