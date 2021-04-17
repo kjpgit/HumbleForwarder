@@ -173,9 +173,19 @@ def get_new_message_headers(config, ses_recipient, message):
         if header in message:
             new_headers[header] = message[header]
 
-    # Lookup in recipient_map, if not found, fall back to default_destination
+    # The envelope destination.  Lookup in recipient_map, if not found, fall
+    # back to default_destination
     new_headers[X_ENVELOPE_TO] = config["recipient_map"].get(ses_recipient,
             config["default_destination"])
+
+    # Optional: Append envelope destination to To: header.
+    # This is useful if the desination is adding a +label, and we want
+    # to use gmail's built in filtering / categorization.
+    if config.get("update_to_header_with_destination", False):
+        new_headers["To"] = message.get("To", "")  # Don't assume To exists
+        if new_headers["To"]:
+            new_headers["To"] += ", "
+        new_headers["To"] += new_headers[X_ENVELOPE_TO]
 
     # From must be a verified address
     if config["force_sender"]:
@@ -309,6 +319,15 @@ class UnitTests(unittest.TestCase):
         config = self.get_test_config(force_sender="fixed@coder.dev")
         new_headers = get_new_message_headers(config, ses_recipient, message)
         self.assertEqual(new_headers["From"], "fixed@coder.dev")
+
+    def test_header_update_to(self):
+        text = self._read_test_file("tests/multiple_recipients.txt")
+        message = parse_message_from_bytes(text)
+        ses_recipient = "code@coder.dev"
+        config = self.get_test_config(default_destination="some+label@mydomain.dev")
+        config.update(update_to_header_with_destination=True)
+        new_headers = get_new_message_headers(config, ses_recipient, message)
+        self.assertEqual(new_headers["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev, some+label@mydomain.dev")
 
     def test_dynamic_mapping(self):
         text = self._read_test_file("tests/multiple_recipients.txt")

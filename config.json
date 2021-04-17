@@ -1,11 +1,12 @@
 {
   "recipient_map": {
     "code@mydomain.dev": "foo@gmail.com",
-    "emergency@mydomain.dev": "bar@gmail.com"
+    "emergency@mydomain.dev": "bar+emergency@gmail.com"
   },
   "region": "us-east-1",
   "incoming_email_bucket": "mybucket",
   "incoming_email_prefix": "mysubdir",
   "force_sender": "",
-  "default_destination": "destination-if-not-in-recipient_map@gmail.com"
+  "default_destination": "destination-if-not-in-recipient_map@gmail.com",
+  "update_to_header_with_destination": True
 }
