@@ -23,7 +23,8 @@ from botocore.exceptions import ClientError
 # Configuration file.  See the example config.json in this directory.
 CONFIG_FILE = os.path.join(os.environ.get('LAMBDA_TASK_ROOT', ''), "config.json")
 
-X_ENVELOPE_TO = "X-Envelope-To"
+# Internal use only, not an actual sent header
+X_ENVELOPE_DESTINATIONS = "X-Envelope-Destinations"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -79,12 +80,12 @@ def forward_mail(ses_recipient, message_id):
 
     # Send the message
     try:
-        send_raw_email(message, envelope_destination=new_headers[X_ENVELOPE_TO])
+        send_raw_email(message, envelope_destinations=new_headers[X_ENVELOPE_DESTINATIONS])
     except ClientError as e:
         logger.error("error sending forwarded email", exc_info=True)
         traceback_string = traceback.format_exc()
         error_message = create_error_email(message, traceback_string)
-        send_raw_email(error_message, envelope_destination=error_message["To"])
+        send_raw_email(error_message, envelope_destinations=[error_message["To"]])
 
 
 def get_message_from_s3(message_id):
@@ -134,16 +135,18 @@ def get_new_message_headers(config, ses_recipient, message):
         if header in message:
             new_headers[header] = message[header]
 
-    # The envelope destination.  Lookup in recipient_map, if not found, fall
+    # The envelope destination(s).  Lookup in recipient_map, if not found, fall
     # back to default_destination
-    new_headers[X_ENVELOPE_TO] = config["recipient_map"].get(ses_recipient,
-            config["default_destination"])
+    new_headers[X_ENVELOPE_DESTINATIONS] = string_to_list(
+            config["recipient_map"].get(ses_recipient, config["default_destination"]))
 
+    # Optional: Add envelope destination(s) to To: header
     if config.get("update_to_header_with_destination", False):
         new_headers["To"] = message.get("To", "")  # Don't assume To exists
-        if new_headers["To"]:
-            new_headers["To"] += ", "
-        new_headers["To"] += new_headers[X_ENVELOPE_TO]
+        for destination in new_headers[X_ENVELOPE_DESTINATIONS]:
+            if new_headers["To"]:
+                new_headers["To"] += ", "
+            new_headers["To"] += destination
 
     # From must be a verified address
     if config["force_sender"]:
@@ -159,12 +162,18 @@ def get_new_message_headers(config, ses_recipient, message):
     return new_headers
 
 
+def string_to_list(s):
+    if isinstance(s, str):
+        return [s]
+    return s
+
+
 def set_new_message_headers(message, new_headers):
     # Clear all headers
     for header in message.keys():
         del message[header]
     for (name, value) in new_headers.items():
-        if name == X_ENVELOPE_TO:
+        if name == X_ENVELOPE_DESTINATIONS:
             # This is only used internally
             pass
         else:
@@ -218,11 +227,11 @@ def is_ses_spam(event):
     return is_fail
 
 
-def send_raw_email(message, *, envelope_destination):
+def send_raw_email(message, *, envelope_destinations):
     client_ses = boto3.client('ses', g_config["region"])
     response = client_ses.send_raw_email(
             Source=message['From'],
-            Destinations=[envelope_destination],
+            Destinations=envelope_destinations,
             RawMessage={
                 'Data': message.as_string()
                 }
@@ -244,7 +253,7 @@ class UnitTests(unittest.TestCase):
         ses_recipient = "code@coder.dev"
         config = self.get_test_config()
         new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "default@secret.com")
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@secret.com"])
         self.assertEqual(new_headers["From"], "code@coder.dev")
         self.assertEqual(new_headers["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev")
         self.assertEqual(new_headers["Subject"], "test 3 addresses")
@@ -252,8 +261,8 @@ class UnitTests(unittest.TestCase):
         self.assertEqual("Content-Disposition" in new_headers, False)
 
         set_new_message_headers(message, new_headers)
-        # We don't actually expose X_ENVELOPE_TO, it's just used internally to pass data
-        self.assertEqual(message[X_ENVELOPE_TO], None)
+        # We don't actually expose X_ENVELOPE_DESTINATIONS, it's just used internally to pass data
+        self.assertEqual(message[X_ENVELOPE_DESTINATIONS], None)
         self.assertEqual(message["From"], "code@coder.dev")
         self.assertEqual(message["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev")
         self.assertEqual(message["Subject"], "test 3 addresses")
@@ -265,10 +274,20 @@ class UnitTests(unittest.TestCase):
         ses_recipient = "code@coder.dev"
         config = self.get_test_config()
         new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "default@secret.com")
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@secret.com"])
         self.assertEqual(new_headers["From"], "code@coder.dev")
         self.assertEqual(new_headers["Subject"], "test reply-to")
         self.assertEqual(new_headers["Reply-To"], "My Alias <alias@alias.com>")
+
+    def test_header_multiple_destinations(self):
+        text = self._read_test_file("tests/reply_to.txt")
+        message = parse_message_from_bytes(text)
+        ses_recipient = "code@coder.dev"
+        config = self.get_test_config(default_destination=["a@a.com", "b@b.com"])
+        config.update(update_to_header_with_destination=True)
+        new_headers = get_new_message_headers(config, ses_recipient, message)
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ['a@a.com', 'b@b.com'])
+        self.assertEqual(new_headers["To"], 'hacker@hacker.com, code@coder.dev, code2@coder.dev, a@a.com, b@b.com')
 
     def test_header_force_sender(self):
         text = self._read_test_file("tests/multiple_recipients.txt")
@@ -296,11 +315,11 @@ class UnitTests(unittest.TestCase):
                 }
         config = self.get_test_config(recipient_map=recipient_map)
         new_headers = get_new_message_headers(config, "hacker@hacker.com", message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "nowhere+label@nowhere.com")
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["nowhere+label@nowhere.com"])
         new_headers = get_new_message_headers(config, "code@coder.dev", message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "A Name <foo+bar@domain.com>")
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["A Name <foo+bar@domain.com>"])
         new_headers = get_new_message_headers(config, "code123@coder.dev", message)
-        self.assertEqual(new_headers[X_ENVELOPE_TO], "default@secret.com")
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@secret.com"])
 
     def test_event_parsing(self):
         text = self._read_test_file("tests/event.json")

@@ -1,7 +1,10 @@
 {
   "recipient_map": {
     "code@mydomain.dev": "foo@gmail.com",
-    "emergency@mydomain.dev": "bar+emergency@gmail.com"
+    "emergency@mydomain.dev": [
+      "one+emergency@gmail.com",
+      "two+emergency@gmail.com"
+    ]
   },
   "default_destination": "destination-if-not-in-recipient_map@gmail.com",
   "region": "us-east-1",

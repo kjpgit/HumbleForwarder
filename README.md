@@ -46,10 +46,13 @@ Massively reworked and cleaned up version of
 
 ### recipient_map
 
-A map of `ses_recipient` (string) -> `envelope_destination` (string).
+A map of `ses_recipient` -> `envelope_destination`.
 Both `ses_recipient` and `envelope_destination` may contain a `+label`.
 But note that currently, all lookups are done verbatim.
 If an address is not found in this map, it will go to `default_destination`.
+
+Note that `envelope_destination` and `default_destination` may be a string or a
+list of strings (multiple destinations are supported).
 
 ### force_sender
 
