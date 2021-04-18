@@ -4,9 +4,11 @@ Humble SES email forwarder
 
 ## Overview
 
-Takes email received by SES, and sends it to a different
-destination via SES.  Simple address mapping is supported.  Feel free to fork it if you
-want more configurability.
+Takes email received by SES, and sends it to a different destination via SES.
+Simple address mapping is supported.  Feel free to fork it if you want more
+configurability.
+
+I use it to [enable additional accounts in Gmail](https://support.google.com/mail/answer/22370?hl=en).
 
 ## Setup Instructions
 
@@ -27,7 +29,7 @@ want more configurability.
 
 * Doesn't forward emails marked as spam / virus.  This requires that you enable scanning in the SES console.
 
-* The body/content is not modified, all attachments are kept.
+* The body/content is not modified, all attachments are kept.  Note that SES has a 10MB sending limit.
 
 * JSON logging.  You can run this Cloudwatch Logs Insights query to check on your emails:
 
