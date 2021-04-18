@@ -13,7 +13,7 @@ want more configurability.
 * Follow these [AWS instructions](https://aws.amazon.com/blogs/messaging-and-targeting/forward-incoming-email-to-an-external-destination/), but use this Lambda code (Python 3.8+) instead,
   and don't add the environment variables for settings.
 
-* Copy and edit the example [config.json](config.json) file in this directory.
+* Copy and edit the example [config.json](config.json) file.
   Go to the Lambda code console and do File->New File->Paste Contents->Save As->"config.json"
   Don't forget to deploy again after saving!
 
