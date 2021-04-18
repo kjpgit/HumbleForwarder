@@ -6,5 +6,7 @@ From: Alpha Sigma <user@users.com>
 Reply-To: My Alias <alias@alias.com>
 To: hacker@hacker.com, code@coder.dev, code2@coder.dev
 Content-Type: text/plain; charset="UTF-8"
+References: <123@mail.gmail.com>
+  <456@us-west-2.amazonses.com>
 
 Test reply-to

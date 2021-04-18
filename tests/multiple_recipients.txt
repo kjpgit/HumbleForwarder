@@ -1,8 +1,8 @@
 MIME-Version: 1.0
 Date: Fri, 16 Apr 2021 17:46:54 -0500
-Message-ID: <CANDBRPsJrc0hbwBQ4RZCO01ZmyTxDc7xkY01CM5CVcROE4zTyw@mail.gmail.com>
+Message-ID: <original-message-id-001@external.com>
 Subject: test 3 addresses
-From: Alpha Sigma <user@users.com>
+From: Some User <user@user.com>
 To: hacker@hacker.com, code@coder.dev, code2@coder.dev
 Content-Type: text/plain; charset="UTF-8"
 

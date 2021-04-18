@@ -148,7 +148,7 @@ def get_new_message_headers(config, ses_recipient, message):
     else:
         new_headers["Reply-To"] = message["From"]
 
-    # This fixes threading of the first message for external Gmail senders
+    # This fixes threading of the first message for external Gmail users who initiated a thread with us
     # https://workspaceupdates.googleblog.com/2019/03/threading-changes-in-gmail-conversation-view.html
     if not message["References"] and message["Message-Id"]:
         new_headers["References"] = message["Message-Id"]
@@ -227,21 +227,18 @@ def strip_ses_recipient_label(address):
 
 class UnitTests(unittest.TestCase):
     def test_multiple_recipients(self):
-        text = self._read_test_file("tests/multiple_recipients.txt")
-        message = parse_message_from_bytes(text)
+        message = self.load_test_message("tests/multiple_recipients.txt")
         self.assertEqual(len(message["To"].addresses), 3)
 
     def test_header_changes(self):
-        text = self._read_test_file("tests/multiple_recipients.txt")
-        message = parse_message_from_bytes(text)
-        ses_recipient = "code@coder.dev"
+        message = self.load_test_message("tests/multiple_recipients.txt")
         config = self.get_test_config()
-        new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@secret.com"])
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@gmail.com"])
         self.assertEqual(new_headers["From"], "code@coder.dev")
         self.assertEqual(new_headers["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev")
         self.assertEqual(new_headers["Subject"], "test 3 addresses")
-        self.assertEqual(new_headers["Reply-To"], "Alpha Sigma <user@users.com>")
+        self.assertEqual(new_headers["Reply-To"], "Some User <user@user.com>")
         self.assertEqual("Content-Disposition" in new_headers, False)
 
         set_new_message_headers(message, new_headers)
@@ -250,75 +247,86 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(message["From"], "code@coder.dev")
         self.assertEqual(message["To"], "hacker@hacker.com, code@coder.dev, code2@coder.dev")
         self.assertEqual(message["Subject"], "test 3 addresses")
-        self.assertEqual(message["Reply-To"], "Alpha Sigma <user@users.com>")
+        self.assertEqual(message["Reply-To"], "Some User <user@user.com>")
 
     def test_header_reply_to(self):
-        text = self._read_test_file("tests/reply_to.txt")
-        message = parse_message_from_bytes(text)
-        ses_recipient = "code@coder.dev"
+        message = self.load_test_message("tests/reply_to.txt")
         config = self.get_test_config()
-        new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@secret.com"])
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@gmail.com"])
         self.assertEqual(new_headers["From"], "code@coder.dev")
         self.assertEqual(new_headers["Subject"], "test reply-to")
         self.assertEqual(new_headers["Reply-To"], "My Alias <alias@alias.com>")
 
     def test_header_multiple_destinations(self):
-        text = self._read_test_file("tests/reply_to.txt")
-        message = parse_message_from_bytes(text)
-        ses_recipient = "code@coder.dev"
+        message = self.load_test_message("tests/reply_to.txt")
         config = self.get_test_config(default_destination=["a@a.com", "b@b.com"])
-        new_headers = get_new_message_headers(config, ses_recipient, message)
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
         self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ['a@a.com', 'b@b.com'])
         self.assertEqual(new_headers["To"], 'hacker@hacker.com, code@coder.dev, code2@coder.dev')
 
     def test_header_force_sender(self):
-        text = self._read_test_file("tests/multiple_recipients.txt")
-        message = parse_message_from_bytes(text)
-        ses_recipient = "code@coder.dev"
-        config = self.get_test_config(force_sender="fixed@coder.dev")
-        new_headers = get_new_message_headers(config, ses_recipient, message)
-        self.assertEqual(new_headers["From"], "fixed@coder.dev")
+        message = self.load_test_message("tests/multiple_recipients.txt")
+        config = self.get_test_config(force_sender="noreply@coder.dev")
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
+        self.assertEqual(new_headers["From"], "noreply@coder.dev")
 
-    def test_dynamic_mapping(self):
-        text = self._read_test_file("tests/multiple_recipients.txt")
-        message = parse_message_from_bytes(text)
+    def test_recipient_map_lookup(self):
+        message = self.load_test_message("tests/multiple_recipients.txt")
         recipient_map = {
-                "hacker@hacker.com": "nowhere+label@nowhere.com",
+                "hacker@hacker.com": "nowhere@nowhere.com",
                 "code@coder.dev": "A Name <foo+bar@domain.com>",
                 }
         config = self.get_test_config(recipient_map=recipient_map)
         new_headers = get_new_message_headers(config, "hacker@hacker.com", message)
-        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["nowhere+label@nowhere.com"])
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["nowhere@nowhere.com"])
         new_headers = get_new_message_headers(config, "code@coder.dev", message)
         self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["A Name <foo+bar@domain.com>"])
         new_headers = get_new_message_headers(config, "code123@coder.dev", message)
-        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@secret.com"])
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["default@gmail.com"])
 
     def test_event_parsing(self):
-        text = self._read_test_file("tests/event.json")
+        text = self.read_test_file("tests/event.json")
         event = json.loads(text)
         self.assertEqual(is_ses_spam(event), True)
         self.assertEqual(get_ses_recipients(event), ['code@coder.dev', 'code2@coder.dev'])
 
     def test_plus_labels(self):
-        text = self._read_test_file("tests/multiple_recipients.txt")
-        message = parse_message_from_bytes(text)
+        message = self.load_test_message("tests/multiple_recipients.txt")
         recipient_map = {
                 "code@coder.dev": "base@gmail.com",
                 "code+label@coder.dev": "specific@gmail.com",
                 }
         config = self.get_test_config(recipient_map=recipient_map)
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["base@gmail.com"])
         new_headers = get_new_message_headers(config, "code+unknown@coder.dev", message)
         self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["base@gmail.com"])
         new_headers = get_new_message_headers(config, "code+label@coder.dev", message)
         self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["specific@gmail.com"])
 
-    def _read_test_file(self, file_name):
+    def test_gmail_threading(self):
+        # Support Gmail threading of first message
+        message = self.load_test_message("tests/multiple_recipients.txt")
+        config = self.get_test_config()
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
+        self.assertEqual(new_headers["References"], "<original-message-id-001@external.com>")
+
+        # Existing header should be unchanged
+        message = self.load_test_message("tests/reply_to.txt")
+        config = self.get_test_config()
+        new_headers = get_new_message_headers(config, "code@coder.dev", message)
+        self.assertEqual(new_headers["References"], "<123@mail.gmail.com>  <456@us-west-2.amazonses.com>")
+
+    def read_test_file(self, file_name):
         with open(file_name, "rb") as f:
             return f.read()
 
-    def get_test_config(self, force_sender="", default_destination="default@secret.com", recipient_map=None):
+    def load_test_message(self, test_file):
+        text = self.read_test_file(test_file)
+        return parse_message_from_bytes(text)
+
+    def get_test_config(self, force_sender="", default_destination="default@gmail.com", recipient_map=None):
         config = {}
         config.update(force_sender=force_sender)
         config.update(default_destination=default_destination)
