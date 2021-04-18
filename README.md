@@ -8,7 +8,8 @@ Takes email received by SES, and sends it to a different destination via SES.
 Simple address mapping is supported.  Feel free to fork it if you want more
 configurability.
 
-I use it to [enable additional accounts in Gmail](https://support.google.com/mail/answer/22370?hl=en).
+I use it to enable additional vanity email accounts in Gmail (these are called alias accounts in Gmail).
+HumbleForwarder forwards received emails to Gmail, and [Gmail sends emails using SES's SMTP server](https://support.google.com/mail/answer/22370?hl=en).  All sent and received emails can be categorized by a `from:my@vanity.dev` filter.
 
 ## Setup Instructions
 
@@ -62,4 +63,4 @@ The S3 bucket that contains the received email (required). Also set `incoming_em
 
 ## Other Acknowledgements
 
-* Got some inspiration from [this python project](https://github.com/chrismarcellino/lambda-ses-email-forwarder/)
+* I was inspired by these projects: [chrismarcellino](https://github.com/chrismarcellino/lambda-ses-email-forwarder/), [arithmetric](https://github.com/arithmetric/aws-lambda-ses-forwarder/issues/119)
