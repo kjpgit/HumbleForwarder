@@ -44,8 +44,8 @@ HumbleForwarder forwards received emails to Gmail, and [Gmail sends emails using
 ### recipient_map
 
 A map of `ses_recipient` -> `envelope_destination`.
-If an address containing a label like `code+label@coder.dev` was not found in
-the map, it will then try `code@coder.dev`.
+If an address containing a label like "code+label@coder.dev" was not found in
+the map, it will then try "code@coder.dev".
 If no address was found, it will go to `default_destination`.
 
 Note that `envelope_destination` and `default_destination` may be a string or a
@@ -54,7 +54,7 @@ list of strings (multiple destinations are supported).
 ### force_sender
 
 If this string is not empty, it is used as the `From` for all emails.
-If this string is empty, `From` will be set to the SES address who received it (`ses_recipient`).
+If this string is empty, `From` will be set to the SES address who received it.
 Note that `From` must always be a verified address.
 
 ### incoming_email_bucket
