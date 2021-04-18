@@ -117,6 +117,8 @@ def get_new_message_headers(config, ses_recipient, message):
             "To",
             "CC",
             "MIME-Version",
+            "References",   # For threading
+            "In-Reply-To",   # For threading
             "Content-Type",
             "Content-Disposition",
             "Content-Transfer-Encoding",
