@@ -41,11 +41,10 @@ def lambda_handler(event, context):
 
     # Get the unique ID of the message. This corresponds to the name of the file in S3.
     message_id = event['Records'][0]['ses']['mail']['messageId']
-    logger.debug(json.dumps(dict(message_id=message_id)))
 
-    # Check for spam / virus
+    # Check for spam / virus early, before we even try loading the message
     if is_ses_spam(event):
-        logger.error(json.dumps(dict(message="rejecting spam message", message_id=message_id)))
+        logger.warn(json.dumps(dict(message="rejecting spam message", message_id=message_id)))
         return
 
     # These are the valid recipient(s) for your domain.
@@ -69,18 +68,17 @@ def forward_mail(ses_recipient, message_id):
     # Change all the headers now.  Boom, that was easy!
     set_new_message_headers(message, new_headers)
 
-    if os.getenv("TEST_DEBUG_BODY"):
-        logger.info(json.dumps(dict(email_body=message.as_string())))
-
-    # Send the message
+    # Send the message, if any destination(s) matched
     # Note: I used to catch ClientError and send a special email on failure,
     # but I removed that code.  Using Lambda async DLQ+SNS catches all failures and
     # is significantly less complex (and more humble!).
     envelope_destinations = new_headers[X_ENVELOPE_DESTINATIONS]
-    send_raw_email(message, envelope_destinations=envelope_destinations)
+    if envelope_destinations:
+        send_raw_email(message, envelope_destinations=envelope_destinations)
 
 
 def get_message_from_s3(message_id):
+    # Get the email object from the S3 bucket.
     bucket = g_config["incoming_email_bucket"]
     prefix = g_config["incoming_email_prefix"]
     if prefix:
@@ -88,8 +86,6 @@ def get_message_from_s3(message_id):
         prefix = prefix.strip("/") + "/"
 
     object_path = prefix + message_id
-
-    # Get the email object from the S3 bucket.
     client_s3 = boto3.client("s3")
     object_s3 = client_s3.get_object(Bucket=bucket, Key=object_path)
     raw_bytes = object_s3['Body'].read()
@@ -209,7 +205,7 @@ def send_raw_email(message, *, envelope_destinations):
             Destinations=envelope_destinations,
             RawMessage=dict(Data=message.as_string()),
             )
-    print("Email sent! MessageId:", response['MessageId'])
+    logger.info(json.dumps(dict(message="message sent", message_id=response['MessageId'])))
 
 
 def strip_ses_recipient_label(address):
