@@ -10,6 +10,5 @@
   "region": "us-east-1",
   "incoming_email_bucket": "mybucket",
   "incoming_email_prefix": "optional/subdir/",
-  "force_sender": "",
-  "update_to_header_with_destination": true
+  "force_sender": ""
 }
