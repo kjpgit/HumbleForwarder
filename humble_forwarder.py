@@ -1,6 +1,7 @@
 """
 Name: HumbleForwarder
 Author: kjp
+URL: https://github.com/kjpgit/HumbleForwarder
 
 Humble SES email forwarder.  Simple address mapping is supported.  Feel free to
 fork it if you want more configurability.
