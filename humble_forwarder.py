@@ -128,10 +128,14 @@ def get_new_message_headers(config, ses_recipient, message):
         if header in message:
             new_headers[header] = message[header]
 
-    # The envelope destination(s).  Lookup in recipient_map, if not found, fall
-    # back to default_destination
-    new_headers[X_ENVELOPE_DESTINATIONS] = string_to_list(
-            config["recipient_map"].get(ses_recipient, config["default_destination"]))
+    # Find the destination(s) to which we forward
+    destinations = config["recipient_map"].get(ses_recipient)
+    if destinations is None:
+        # Lookup again without the +label
+        destinations = config["recipient_map"].get(strip_ses_recipient_label(ses_recipient))
+    if destinations is None:
+        destinations = config["default_destination"]
+    new_headers[X_ENVELOPE_DESTINATIONS] = string_to_list(destinations)
 
     # From must be a verified address
     if config["force_sender"]:
@@ -197,12 +201,22 @@ def send_raw_email(message, *, envelope_destinations):
     response = client_ses.send_raw_email(
             Source=message['From'],
             Destinations=envelope_destinations,
-            RawMessage={
-                'Data': message.as_string()
-                }
+            RawMessage=dict(Data=message.as_string()),
             )
     print("Email sent! MessageId:", response['MessageId'])
 
+
+def strip_ses_recipient_label(address):
+    """
+    Ensure `address` does not contain any +label.
+    Address is a simple recipient address given by SES, it does not contain a display name.
+
+    For example, 'coder+label@vanity.dev' -> 'coder@vanity.dev'.
+    """
+    name, domain = address.split("@")
+    if '+' in name:
+        name = name.split("+")[0]
+    return name + "@" + domain
 
 
 
@@ -281,6 +295,19 @@ class UnitTests(unittest.TestCase):
         event = json.loads(text)
         self.assertEqual(is_ses_spam(event), True)
         self.assertEqual(get_ses_recipients(event), ['code@coder.dev', 'code2@coder.dev'])
+
+    def test_plus_labels(self):
+        text = self._read_test_file("tests/multiple_recipients.txt")
+        message = parse_message_from_bytes(text)
+        recipient_map = {
+                "code@coder.dev": "base@gmail.com",
+                "code+label@coder.dev": "specific@gmail.com",
+                }
+        config = self.get_test_config(recipient_map=recipient_map)
+        new_headers = get_new_message_headers(config, "code+unknown@coder.dev", message)
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["base@gmail.com"])
+        new_headers = get_new_message_headers(config, "code+label@coder.dev", message)
+        self.assertEqual(new_headers[X_ENVELOPE_DESTINATIONS], ["specific@gmail.com"])
 
     def _read_test_file(self, file_name):
         with open(file_name, "rb") as f:

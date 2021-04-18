@@ -2,11 +2,11 @@
   "recipient_map": {
     "code@mydomain.dev": "foo@gmail.com",
     "emergency@mydomain.dev": [
-      "one+emergency@gmail.com",
-      "two+emergency@gmail.com"
+      "one@gmail.com",
+      "two@gmail.com"
     ]
   },
-  "default_destination": "destination-if-not-in-recipient_map@gmail.com",
+  "default_destination": ["admin@gmail.com"],
   "region": "us-east-1",
   "incoming_email_bucket": "mybucket",
   "incoming_email_prefix": "optional/subdir/",

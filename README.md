@@ -44,9 +44,9 @@ HumbleForwarder forwards received emails to Gmail, and [Gmail sends emails using
 ### recipient_map
 
 A map of `ses_recipient` -> `envelope_destination`.
-Both `ses_recipient` and `envelope_destination` may contain a `+label`.
-But note that currently, all lookups are done verbatim.
-If an address is not found in this map, it will go to `default_destination`.
+If an address containing a label like `code+label@coder.dev` was not found in
+the map, it will then try `code@coder.dev`.
+If no address was found, it will go to `default_destination`.
 
 Note that `envelope_destination` and `default_destination` may be a string or a
 list of strings (multiple destinations are supported).
