@@ -148,6 +148,11 @@ def get_new_message_headers(config, ses_recipient, message):
     else:
         new_headers["Reply-To"] = message["From"]
 
+    # This fixes threading of the first message for external Gmail senders
+    # https://workspaceupdates.googleblog.com/2019/03/threading-changes-in-gmail-conversation-view.html
+    if not message["References"] and message["Message-Id"]:
+        new_headers["References"] = message["Message-Id"]
+
     return new_headers
 
 
