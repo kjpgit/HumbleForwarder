@@ -44,8 +44,10 @@ def lambda_handler(event, context):
 
     # Check for spam / virus early, before we even try loading the message
     if is_ses_spam(event):
-        logger.warn(json.dumps(dict(message="rejecting spam message", message_id=message_id)))
-        return
+        if g_config["block_spam"]:
+            logger.warn(json.dumps(dict(message="blocking spam message", message_id=message_id)))
+            return
+        logger.warn(json.dumps(dict(message="accepting spam message", message_id=message_id)))
 
     # These are the valid recipient(s) for your domain.
     # Any other bogus addresses in the To: header should not be present here.
@@ -176,7 +178,8 @@ def get_runtime_config_dict():
     full_path = os.path.join(os.environ['LAMBDA_TASK_ROOT'], CONFIG_FILE)
     with open(full_path, "rb") as f:
         config = json.load(f)
-        assert isinstance(config, dict)
+    assert isinstance(config, dict)
+    assert isinstance(config["block_spam"], bool)  # New required config option
     return config
 
 
@@ -195,6 +198,8 @@ def is_ses_spam(event):
             logger.debug(json.dumps(dict(verdict=verdict, status=status)))
             if status == "FAIL":
                 is_fail = True
+    if os.getenv("TEST_SES_SPAM"):
+        is_fail = True
     return is_fail
 
 
@@ -212,7 +217,6 @@ def strip_ses_recipient_label(address):
     """
     Ensure `address` does not contain any +label.
     Address is a simple recipient address given by SES, it does not contain a display name.
-
     For example, 'coder+label@vanity.dev' -> 'coder@vanity.dev'.
     """
     name, domain = address.split("@")

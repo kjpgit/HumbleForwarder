@@ -9,7 +9,7 @@ Simple address mapping is supported.  Feel free to fork it if you want more
 configurability.
 
 I use it to enable additional vanity email accounts in Gmail (these are called alias accounts in Gmail).
-HumbleForwarder forwards received emails to Gmail, and [Gmail sends emails using SES's SMTP server](https://support.google.com/mail/answer/22370?hl=en).  All sent and received emails can be categorized by a `from:my@vanity.dev` filter.
+HumbleForwarder forwards received emails to Gmail, and [Gmail sends emails using SES's SMTP server](https://support.google.com/mail/answer/22370?hl=en).  All sent and received emails can be categorized by a `from:my@vanity.dev` filter.  My vanity domain is DKIM verified in SES, so people don't see a "via" header.
 
 ## Setup Instructions
 
@@ -28,7 +28,7 @@ HumbleForwarder forwards received emails to Gmail, and [Gmail sends emails using
 
 ## Features
 
-* Doesn't forward emails marked as spam / virus.  This requires that you enable scanning in the SES console.
+* Blocks messages that fail the SES spam/virus/authentication verdicts
 
 * The body/content is not modified, all attachments are kept.  Note that SES has a 10MB sending limit.
 
@@ -60,6 +60,10 @@ Note that `From` must always be a verified address.
 ### incoming_email_bucket
 
 The S3 bucket that contains the received email (required). Also set `incoming_email_prefix` if necessary.
+
+### block_spam
+
+If True, don't forward any messages with "FAIL" (hard fail) set in these SES checks: ['spamVerdict', 'virusVerdict', 'spfVerdict', 'dkimVerdict', 'dmarcVerdict'].
 
 ## Other Acknowledgements
 
